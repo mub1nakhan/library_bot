@@ -30,16 +30,35 @@ def generate_qr_code_file(data: str) -> ContentFile:
     return ContentFile(buffer.getvalue())
 
 
-async def search_books(query: str, limit: int = 10) -> list[Book]:
+def _search_filter(query: str) -> Q:
+    return Q(title__icontains=query) | Q(author__full_name__icontains=query)
+
+
+async def search_books(query: str, limit: int = 10, offset: int = 0) -> list[Book]:
+    """
+    `offset` — sahifalash (pagination) uchun. Masalan 2-sahifa uchun
+    offset=10, limit=10 beriladi (natijalar 11-20 orasida bo'ladi).
+    """
     query = query.strip()
     if not query:
         return []
 
     qs: QuerySet[Book] = (
         Book.objects.select_related("author", "category")
-        .filter(Q(title__icontains=query) | Q(author__full_name__icontains=query))[:limit]
+        .filter(_search_filter(query))[offset : offset + limit]
     )
     return [book async for book in qs]
+
+
+async def count_search_results(query: str) -> int:
+    """Berilgan so'rov bo'yicha jami nechta kitob topilishini qaytaradi.
+
+    Sahifalash tugmalarini qachon ko'rsatish kerakligini bilish uchun kerak.
+    """
+    query = query.strip()
+    if not query:
+        return 0
+    return await Book.objects.filter(_search_filter(query)).acount()
 
 
 async def get_book_by_qr_token(qr_token: str) -> Book | None:
